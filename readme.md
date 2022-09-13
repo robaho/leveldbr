@@ -18,15 +18,15 @@ There is a sample command line client in cmd/client which uses the client API.
 
 Using the same 'performance' test as leveldb, but using the remote layer:
 
-<pre>
-insert time  1000000 records =  95207 ms, usec per op  95.207138
-close time  678 ms
-scan time  1930 ms, usec per op  1.930828
-scan time 50%  874 ms, usec per op  1.749824
-random access time  72.44012 us per get
-insert batch time  1000000 records =  1696 ms, usec per op  1.69682
-close time  367 ms
-scan time  1900 ms, usec per op  1.900483
-scan time 50%  982 ms, usec per op  1.964134
-random access time  79.19778 us per get
-</pre>
+```
+insert time  1000000 records =  111719 ms, usec per op  111.719936
+close time  1356 ms
+scan time  2779 ms, usec per op  2.779619
+scan time 50%  1238 ms, usec per op  2.476208
+random access time  93.91525 us per get
+insert batch time  1000000 records =  2814 ms, usec per op  2.814384
+close time  815 ms
+scan time  2891 ms, usec per op  2.891363
+scan time 50%  1212 ms, usec per op  2.42586
+random access time  96.80413 us per get
+```
