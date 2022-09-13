@@ -1,0 +1,127 @@
+// Copyright 2015 gRPC authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.robaho.leveldbr";
+option java_outer_classname = "LevelDBRemoteProto";
+option go_package = "/proto";
+
+package remote;
+
+service Leveldb {
+    rpc Connection (stream InMessage) returns (stream OutMessage) {}
+    rpc Remove(RemoveRequest) returns (RemoveReply) {}
+}
+
+message InMessage {
+    oneof request {
+        OpenRequest open = 1;
+        CloseRequest close = 3;
+        GetRequest get = 4;
+        PutRequest put = 5;
+        WriteRequest write = 6;
+        LookupRequest lookup = 7;
+        LookupNextRequest next = 8;
+    }
+}
+
+message OutMessage {
+    oneof reply {
+        OpenReply open = 1;
+        CloseReply close = 3;
+        GetReply get = 4;
+        PutReply put = 5;
+        WriteReply write = 6;
+        LookupReply lookup = 7;
+        LookupNextReply next = 8;
+    }
+}
+
+message OpenRequest {
+    string dbname = 1;
+    bool create = 2;
+}
+
+message OpenReply {
+    string error = 2;
+}
+
+message RemoveRequest {
+    string dbname = 1;
+}
+
+message RemoveReply {
+    string error = 1;
+}
+
+message CloseRequest {
+}
+
+message CloseReply {
+    string error = 1;
+}
+
+message GetRequest {
+    bytes key = 2;
+}
+
+message GetReply {
+    bytes value = 1;
+    string error = 2;
+}
+
+message PutRequest {
+    bytes key = 2;
+    bytes value = 3;
+}
+
+message PutReply {
+    string error = 1;
+}
+
+message WriteRequest {
+    repeated KeyValue entries = 1;
+}
+
+message WriteReply {
+    string error = 1;
+}
+
+message LookupRequest {
+    bytes lower = 2;
+    bytes upper = 3;
+}
+
+message LookupReply {
+    uint64 id = 1;
+    string error = 2;
+}
+
+message LookupNextRequest {
+    uint64 id = 1;
+}
+
+message KeyValue {
+    bytes key = 1;
+    bytes value = 2;
+}
+
+message LookupNextReply {
+    repeated KeyValue entries = 1;
+    string error=2;
+}
+
+
