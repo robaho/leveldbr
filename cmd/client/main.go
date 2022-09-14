@@ -20,6 +20,8 @@ func main() {
 		log.Fatal(err)
 	}
 
+	err = db.Put([]byte("mykey"), []byte("myvalue"))
+
 	time.Sleep(time.Second * 2)
 
 	err = db.Close()
