@@ -91,3 +91,61 @@ func TestLookup(t *testing.T) {
 		log.Fatal(err)
 	}
 }
+
+func TestSnapshotLookup(t *testing.T) {
+
+	err := client.Remove(addr, dbname, 10)
+	if err != nil && err != leveldb.NoDatabaseFound {
+		log.Fatal(err)
+	}
+
+	db, err := client.Open(addr, dbname, true, 10)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = db.Put([]byte("mykey"), []byte("myvalue"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot, err := db.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.Put([]byte("mykey2"), []byte("myvalue2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	val, err := snapshot.Get([]byte("mykey"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(val) != "myvalue" {
+		t.Fatal("wrong value returned", string(val))
+	}
+
+	_, err = snapshot.Get([]byte("mykey2"))
+	if err != leveldb.KeyNotFound {
+		t.Fatal("mykey2 should not have been found", err)
+	}
+
+	itr, err := snapshot.Lookup(nil, nil)
+	count := 0
+	for {
+		_, _, err = itr.Next()
+		if err == leveldb.EndOfIterator {
+			break
+		}
+		count++
+	}
+	if count != 1 {
+		t.Fatal("wrong count", count)
+	}
+
+	err = db.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+}

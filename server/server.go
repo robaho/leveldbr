@@ -17,9 +17,10 @@ type openDatabase struct {
 }
 
 type connstate struct {
-	db   *openDatabase
-	itrs map[uint64]leveldb.LookupIterator
-	next uint64 // next iterator id
+	db        *openDatabase
+	itrs      map[uint64]leveldb.LookupIterator
+	snapshots map[uint64]*leveldb.Snapshot
+	next      uint64 // next iterator id
 }
 
 type Server struct {
@@ -55,7 +56,7 @@ func (s *Server) Remove(ctx context.Context, in *pb.RemoveRequest) (*pb.RemoveRe
 
 func (s *Server) Connection(conn pb.Leveldb_ConnectionServer) error {
 
-	state := connstate{itrs: make(map[uint64]leveldb.LookupIterator)}
+	state := connstate{itrs: make(map[uint64]leveldb.LookupIterator), snapshots: make(map[uint64]*leveldb.Snapshot)}
 
 	defer s.closedb(&state)
 
@@ -83,6 +84,8 @@ func (s *Server) Connection(conn pb.Leveldb_ConnectionServer) error {
 			err = s.lookup(conn, &state, msg.GetLookup())
 		case *pb.InMessage_Next:
 			err = s.lookupNext(conn, &state, msg.GetNext())
+		case *pb.InMessage_Snapshot:
+			err = s.snapshot(conn, &state, msg.GetSnapshot())
 		}
 
 		if err != nil {
@@ -161,10 +164,20 @@ func (s *Server) get(conn pb.Leveldb_ConnectionServer, state *connstate, in *pb.
 	var err error
 	var value []byte
 
-	value, err = state.db.db.Get(in.Key)
-
-	reply := &pb.OutMessage_Get{Get: &pb.GetReply{Value: value, Error: toErrS(err)}}
-	return conn.Send(&pb.OutMessage{Reply: reply})
+	if in.GetSnapshot() == 0 {
+		value, err = state.db.db.Get(in.Key)
+		reply := &pb.OutMessage_Get{Get: &pb.GetReply{Value: value, Error: toErrS(err)}}
+		return conn.Send(&pb.OutMessage{Reply: reply})
+	} else {
+		snapshot, ok := state.snapshots[in.GetSnapshot()]
+		if !ok {
+			err = errors.New("invalid snapshot id")
+		} else {
+			value, err = snapshot.Get(in.Key)
+		}
+		reply := &pb.OutMessage_Get{Get: &pb.GetReply{Value: value, Error: toErrS(err)}}
+		return conn.Send(&pb.OutMessage{Reply: reply})
+	}
 }
 
 func (s *Server) put(conn pb.Leveldb_ConnectionServer, state *connstate, in *pb.PutRequest) error {
@@ -193,7 +206,20 @@ func (s *Server) lookup(conn pb.Leveldb_ConnectionServer, state *connstate, in *
 	var err error
 	var id uint64
 
-	itr, err0 := state.db.db.Lookup(in.Lower, in.Upper)
+	var itr leveldb.LookupIterator
+	var err0 error
+
+	if in.GetSnapshot() == 0 {
+		itr, err0 = state.db.db.Lookup(in.Lower, in.Upper)
+	} else {
+		snapshot, ok := state.snapshots[in.GetSnapshot()]
+		if !ok {
+			err0 = errors.New("invalid snapshot id")
+		} else {
+			itr, err0 = snapshot.Lookup(in.Lower, in.Upper)
+		}
+	}
+
 	if err0 == nil {
 		state.next++
 		id = state.next
@@ -237,5 +263,22 @@ func (s *Server) lookupNext(conn pb.Leveldb_ConnectionServer, state *connstate, 
 	}
 
 	reply := &pb.OutMessage_Next{Next: &pb.LookupNextReply{Entries: entries, Error: toErrS(err)}}
+	return conn.Send(&pb.OutMessage{Reply: reply})
+}
+
+func (s *Server) snapshot(conn pb.Leveldb_ConnectionServer, state *connstate, in *pb.SnapshotRequest) error {
+
+	var err error
+	var id uint64
+
+	snapshot, err0 := state.db.db.Snapshot()
+	if err0 == nil {
+		state.next++
+		id = state.next
+		state.snapshots[id] = snapshot
+	}
+	err = err0
+
+	reply := &pb.OutMessage_Snapshot{Snapshot: &pb.SnapshotReply{Id: id, Error: toErrS(err)}}
 	return conn.Send(&pb.OutMessage{Reply: reply})
 }

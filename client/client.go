@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"github.com/robaho/leveldb"
 	pb "github.com/robaho/leveldbr/internal/proto"
 	"google.golang.org/grpc"
 	"time"
@@ -15,9 +16,9 @@ type RemoteDatabase struct {
 	stream  pb.Leveldb_ConnectionClient
 }
 
-type RemoteTransaction struct {
-	txid uint64
-	db   *RemoteDatabase
+type RemoteSnapshot struct {
+	id uint64
+	db *RemoteDatabase
 }
 
 type RemoteIterator struct {
@@ -63,7 +64,7 @@ func Open(addr string, dbname string, createIfNeeded bool, timeout int) (*Remote
 	response := msg.GetOpen()
 
 	if response.Error != "" {
-		return nil, errors.New(response.Error)
+		return nil, leveldb.MapError(response.Error)
 	}
 
 	return db, nil
@@ -86,7 +87,7 @@ func (db *RemoteDatabase) Close() error {
 	response := msg.GetClose()
 
 	if response.Error != "" {
-		return errors.New(response.Error)
+		return leveldb.MapError(response.Error)
 	}
 
 	db.stream.CloseSend()
@@ -119,13 +120,17 @@ func Remove(addr string, dbname string, timeout int) error {
 	}
 
 	if response.Error != "" {
-		return errors.New(response.Error)
+		return leveldb.MapError(response.Error)
 	}
 	return nil
 }
 
 func (db *RemoteDatabase) Get(key []byte) ([]byte, error) {
-	request := &pb.InMessage_Get{Get: &pb.GetRequest{Key: key}}
+	return db.snapshotGet(0, key)
+}
+
+func (db *RemoteDatabase) snapshotGet(snapshot uint64, key []byte) ([]byte, error) {
+	request := &pb.InMessage_Get{Get: &pb.GetRequest{Key: key, Snapshot: snapshot}}
 
 	err := db.stream.Send(&pb.InMessage{Request: request})
 	if err != nil {
@@ -140,7 +145,7 @@ func (db *RemoteDatabase) Get(key []byte) ([]byte, error) {
 	response := msg.GetGet()
 
 	if response.Error != "" {
-		return nil, errors.New(response.Error)
+		return nil, leveldb.MapError(response.Error)
 	}
 
 	return response.Value, nil
@@ -161,7 +166,7 @@ func (db *RemoteDatabase) Put(key []byte, value []byte) error {
 	response := msg.GetPut()
 
 	if response.Error != "" {
-		return errors.New(response.Error)
+		return leveldb.MapError(response.Error)
 	}
 
 	return nil
@@ -189,14 +194,18 @@ func (db *RemoteDatabase) Write(wb WriteBatch) error {
 	response := msg.GetWrite()
 
 	if response.Error != "" {
-		return errors.New(response.Error)
+		return leveldb.MapError(response.Error)
 	}
 
 	return nil
 }
 
 func (db *RemoteDatabase) Lookup(lower []byte, upper []byte) (*RemoteIterator, error) {
-	request := &pb.InMessage_Lookup{Lookup: &pb.LookupRequest{Lower: lower, Upper: upper}}
+	return db.snapshotLookup(0, lower, upper)
+}
+
+func (db *RemoteDatabase) snapshotLookup(snapshot uint64, lower []byte, upper []byte) (*RemoteIterator, error) {
+	request := &pb.InMessage_Lookup{Lookup: &pb.LookupRequest{Lower: lower, Upper: upper, Snapshot: snapshot}}
 
 	err := db.stream.Send(&pb.InMessage{Request: request})
 	if err != nil {
@@ -241,7 +250,7 @@ func (itr *RemoteIterator) Next() (key []byte, value []byte, err error) {
 	response := msg.GetNext()
 
 	if response.Error != "" {
-		return nil, nil, errors.New(response.Error)
+		return nil, nil, leveldb.MapError(response.Error)
 	}
 
 	itr.entries = response.Entries
@@ -266,4 +275,36 @@ func (wb *WriteBatch) Put(key []byte, value []byte) {
 
 func (wb *WriteBatch) Remove(key []byte) {
 	wb.entries = append(wb.entries, keyValue{key: key})
+}
+
+func (db *RemoteDatabase) Snapshot() (*RemoteSnapshot, error) {
+	request := &pb.InMessage_Snapshot{Snapshot: &pb.SnapshotRequest{}}
+
+	err := db.stream.Send(&pb.InMessage{Request: request})
+	if err != nil {
+		return nil, err
+	}
+
+	msg, err := db.stream.Recv()
+	if err != nil {
+		return nil, err
+	}
+
+	response := msg.GetSnapshot()
+
+	if response.Error != "" {
+		return nil, leveldb.MapError(response.Error)
+	}
+
+	rs := RemoteSnapshot{db: db, id: response.Id}
+
+	return &rs, nil
+}
+
+func (rs *RemoteSnapshot) Get(key []byte) ([]byte, error) {
+	return rs.db.snapshotGet(rs.id, key)
+}
+
+func (rs *RemoteSnapshot) Lookup(lower []byte, upper []byte) (*RemoteIterator, error) {
+	return rs.db.snapshotLookup(rs.id, lower, upper)
 }
