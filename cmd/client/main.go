@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"flag"
-	"github.com/robaho/leveldbr/client"
 	"log"
 	"time"
+
+	"github.com/robaho/leveldbr/client"
 )
 
 func main() {
@@ -17,15 +19,26 @@ func main() {
 
 	db, err := client.Open(*addr, *dbname, *create, *timeout)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("error with open ",err)
 	}
 
 	err = db.Put([]byte("mykey"), []byte("myvalue"))
+	if err != nil {
+		log.Fatal("error with put ",err)
+	}
+
+	value, err := db.Get([]byte("mykey"))
+	if err != nil {
+		log.Fatal("error with get ",err)
+	}
+	if !bytes.Equal(value, []byte("myvalue")) {
+		log.Fatal("unexpected value")
+	}
 
 	time.Sleep(time.Second * 2)
 
 	err = db.Close()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("error with close ",err)
 	}
 }

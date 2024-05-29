@@ -1,3 +1,4 @@
 /databases/
 /cmd/server/.gcloudignore
 /.idea/
+.DS_Store
